@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agent_manager
+      POSTGRES_PASSWORD: agent_manager
+      POSTGRES_DB: agent_manager
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_manager"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build: ./backend
+    environment:
+      AGENT_MANAGER_DATABASE_URL: postgresql+asyncpg://agent_manager:agent_manager@postgres:5432/agent_manager
+      AGENT_MANAGER_JWT_SECRET: ${AGENT_MANAGER_JWT_SECRET:-dev-only-secret-change-me-in-production}
+      AGENT_MANAGER_CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
