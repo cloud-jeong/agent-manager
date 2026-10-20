@@ -2,7 +2,10 @@
 
 A standalone **FastAPI + Next.js** reimplementation of [Archestra](https://github.com/archestra-ai/archestra)'s agent management: agent CRUD, team/organization visibility, labels, soft delete/restore, and a per-user default agent.
 
-The design and the original Archestra code it was ported from are described in [`docs/plan.md`](docs/plan.md).
+Docs:
+- [`docs/plan.md`](docs/plan.md): design plan and the Archestra code each part was ported from
+- [`docs/data-model.md`](docs/data-model.md): ERD, domain objects, API models, frontend state
+- [`docs/sequence-diagrams.md`](docs/sequence-diagrams.md): sequence diagrams for each flow (auth, list, create, update, delete/restore, labels, default agent, teams)
 
 ## Stack
 
