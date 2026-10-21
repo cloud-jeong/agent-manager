@@ -253,6 +253,155 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Conversations */
+        get: operations["listConversations"];
+        put?: never;
+        /** Create Conversation */
+        post: operations["createConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation */
+        get: operations["getConversation"];
+        put?: never;
+        post?: never;
+        /** Delete Conversation */
+        delete: operations["deleteConversation"];
+        options?: never;
+        head?: never;
+        /** Update Conversation */
+        patch: operations["updateConversation"];
+        trace?: never;
+    };
+    "/api/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Message
+         * @description Store the user's message and queue a run; follow it via `/api/runs/{id}/events`.
+         */
+        post: operations["sendMessage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description Run the agent on `input` in a new conversation. Poll `GET /api/runs/{id}` for the result.
+         */
+        post: operations["startRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["listRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["getRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Run */
+        post: operations["cancelRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Run Events
+         * @description Server-sent events for a run. Each event's `id` is its seq; reconnect with
+         *     `Last-Event-ID` (or `?after=`) to resume. The stream ends with a `done` event.
+         */
+        get: operations["streamRunEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -392,6 +541,18 @@ export interface components {
             /** Canmodify */
             canModify: boolean;
         };
+        /** AgentRef */
+        AgentRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+        };
         /** AgentTeamRef */
         AgentTeamRef: {
             /**
@@ -494,6 +655,66 @@ export interface components {
              */
             level?: "use" | "write";
         };
+        /** ConversationCreate */
+        ConversationCreate: {
+            /**
+             * Agentid
+             * Format: uuid
+             */
+            agentId: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** ConversationDetail */
+        ConversationDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            agent: components["schemas"]["AgentRef"];
+            /** Title */
+            title: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Messages */
+            messages: components["schemas"]["MessageRead"][];
+            activeRun: components["schemas"]["RunRead"] | null;
+        };
+        /** ConversationRead */
+        ConversationRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            agent: components["schemas"]["AgentRef"];
+            /** Title */
+            title: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /** ConversationUpdate */
+        ConversationUpdate: {
+            /** Title */
+            title: string;
+        };
         /** DefaultAgentRead */
         DefaultAgentRead: {
             /** Defaultagentid */
@@ -552,10 +773,53 @@ export interface components {
             /** Teams */
             teams: components["schemas"]["UserTeamMembership"][];
         };
+        /** MessageCreate */
+        MessageCreate: {
+            /** Content */
+            content: string;
+        };
+        /** MessageRead */
+        MessageRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Seq */
+            seq: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            }[];
+            /** Runid */
+            runId: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+        };
         /** Paginated[AgentRead] */
         Paginated_AgentRead_: {
             /** Data */
             data: components["schemas"]["AgentRead"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** Paginated[ConversationRead] */
+        Paginated_ConversationRead_: {
+            /** Data */
+            data: components["schemas"]["ConversationRead"][];
+            pagination: components["schemas"]["Pagination"];
+        };
+        /** Paginated[RunRead] */
+        Paginated_RunRead_: {
+            /** Data */
+            data: components["schemas"]["RunRead"][];
             pagination: components["schemas"]["Pagination"];
         };
         /** Pagination */
@@ -568,6 +832,104 @@ export interface components {
             offset: number;
             /** Hasnext */
             hasNext: boolean;
+        };
+        /** RunCreate */
+        RunCreate: {
+            /** Input */
+            input: string;
+        };
+        /** RunDetail */
+        RunDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Conversationid
+             * Format: uuid
+             */
+            conversationId: string;
+            agent: components["schemas"]["AgentRef"];
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "chat" | "api";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Error */
+            error: string | null;
+            /** Model */
+            model: string | null;
+            /** Inputtokens */
+            inputTokens: number;
+            /** Outputtokens */
+            outputTokens: number;
+            /** Cachereadinputtokens */
+            cacheReadInputTokens: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Startedat */
+            startedAt: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Output */
+            output: string | null;
+        };
+        /** RunRead */
+        RunRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Conversationid
+             * Format: uuid
+             */
+            conversationId: string;
+            agent: components["schemas"]["AgentRef"];
+            /**
+             * Trigger
+             * @enum {string}
+             */
+            trigger: "chat" | "api";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Error */
+            error: string | null;
+            /** Model */
+            model: string | null;
+            /** Inputtokens */
+            inputTokens: number;
+            /** Outputtokens */
+            outputTokens: number;
+            /** Cachereadinputtokens */
+            cacheReadInputTokens: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Startedat */
+            startedAt: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+        };
+        /** SendMessageResponse */
+        SendMessageResponse: {
+            message: components["schemas"]["MessageRead"];
+            run: components["schemas"]["RunRead"];
         };
         /** SuccessResponse */
         SuccessResponse: {
@@ -1352,6 +1714,372 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DefaultAgentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listConversations: {
+        parameters: {
+            query?: {
+                agentId?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Paginated_ConversationRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    createConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sendMessage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendMessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    startRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listRuns: {
+        parameters: {
+            query?: {
+                status?: ("queued" | "running" | "succeeded" | "failed" | "cancelled") | null;
+                agentId?: string | null;
+                trigger?: ("chat" | "api") | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Paginated_RunRead_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancelRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    streamRunEvents: {
+        parameters: {
+            query?: {
+                /** @description Only events with a greater seq */
+                after?: number | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Validation Error */

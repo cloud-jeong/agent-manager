@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     # Disables connection pooling; used by the test suite
     testing: bool = False
+    # Runs executed in parallel by one worker process
+    worker_concurrency: int = 4
+    # A running run whose heartbeat is older than this is marked failed
+    run_stale_after_seconds: int = 60
+
+    @property
+    def asyncpg_dsn(self) -> str:
+        """`database_url` without the SQLAlchemy driver suffix, for raw asyncpg connections."""
+        return self.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
     @property
     def cors_origin_list(self) -> list[str]:

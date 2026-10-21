@@ -152,6 +152,13 @@ export function AgentsTable({
                         </>
                       ) : (
                         <>
+                          {agent.agentType === "agent" && (
+                            <DropdownMenuItem
+                              render={<Link href={`/chat?agentId=${agent.id}`} />}
+                            >
+                              Chat
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem render={<Link href={`/agents/${agent.id}`} />}>
                             {agent.canModify ? "Edit" : "View"}
                           </DropdownMenuItem>

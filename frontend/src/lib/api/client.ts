@@ -11,6 +11,12 @@ export type AgentScope = Agent["scope"];
 export type Team = Schemas["TeamRead"];
 export type User = Schemas["UserRead"];
 export type Me = Schemas["MeRead"];
+export type Conversation = Schemas["ConversationRead"];
+export type ConversationDetail = Schemas["ConversationDetail"];
+export type ChatMessage = Schemas["MessageRead"];
+export type Run = Schemas["RunRead"];
+export type RunDetail = Schemas["RunDetail"];
+export type RunStatus = Run["status"];
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, LogOut, Users } from "lucide-react";
+import { Bot, LogOut, MessageSquare, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
@@ -50,6 +50,7 @@ export function AppShell({
 
   const nav = [
     { href: "/agents", label: "Agents", icon: Bot, show: true },
+    { href: "/chat", label: "Chat", icon: MessageSquare, show: true },
     { href: "/settings/teams", label: "Teams & Users", icon: Users, show: me.data.role === "admin" },
   ];
 
