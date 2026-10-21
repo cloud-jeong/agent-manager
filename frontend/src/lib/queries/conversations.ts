@@ -115,5 +115,10 @@ export function useRuns(params: RunListParams) {
     queryKey: runKeys.list(params),
     queryFn: () => unwrap(api.GET("/api/runs", { params: { query: params } })),
     placeholderData: keepPreviousData,
+    // Keep statuses fresh while something is still queued or running.
+    refetchInterval: (query) =>
+      query.state.data?.data.some((r) => r.status === "queued" || r.status === "running")
+        ? 3000
+        : false,
   });
 }
