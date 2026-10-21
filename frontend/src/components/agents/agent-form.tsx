@@ -30,6 +30,16 @@ const formSchema = z
     systemPrompt: z.string(),
     agentType: z.enum(["agent", "mcp_gateway"]),
     considerContextUntrusted: z.boolean(),
+    model: z.enum(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"]),
+    effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
+    maxTurns: z.number().int().min(1, "At least 1").max(200, "At most 200"),
+    tools: z.object({
+      bash: z.boolean(),
+      textEditor: z.boolean(),
+      webSearch: z.boolean(),
+      webFetch: z.boolean(),
+    }),
+    sandboxNetwork: z.boolean(),
     scope: z.enum(["personal", "team", "org"]),
     teams: z.array(z.string()),
     users: z.array(z.object({ userId: z.string(), level: z.enum(["use", "write"]) })),
@@ -83,6 +93,16 @@ export function AgentForm({
       systemPrompt: agent?.systemPrompt ?? "",
       agentType: agent?.agentType ?? "agent",
       considerContextUntrusted: agent?.considerContextUntrusted ?? false,
+      model: (agent?.model as FormValues["model"] | undefined) ?? "claude-opus-5-5",
+      effort: agent?.effort ?? "medium",
+      maxTurns: agent?.maxTurns ?? 30,
+      tools: {
+        bash: agent?.tools.bash ?? false,
+        textEditor: agent?.tools.textEditor ?? false,
+        webSearch: agent?.tools.webSearch ?? false,
+        webFetch: agent?.tools.webFetch ?? false,
+      },
+      sandboxNetwork: agent?.sandboxNetwork ?? false,
       scope: agent?.scope ?? "personal",
       teams: agent?.teams.map((t) => t.id) ?? [],
       users: agent?.users.map((u) => ({ userId: u.id, level: u.level })) ?? [],
@@ -92,6 +112,9 @@ export function AgentForm({
   const { errors } = form.formState;
   const teamIds = useWatch({ control: form.control, name: "teams" });
   const shares = useWatch({ control: form.control, name: "users" });
+  const agentType = useWatch({ control: form.control, name: "agentType" });
+  const tools = useWatch({ control: form.control, name: "tools" });
+  const usesSandbox = tools.bash || tools.textEditor;
 
   return (
     <form
@@ -104,6 +127,11 @@ export function AgentForm({
           systemPrompt: values.systemPrompt.trim() || null,
           agentType: values.agentType,
           considerContextUntrusted: values.considerContextUntrusted,
+          model: values.model,
+          effort: values.effort,
+          maxTurns: values.maxTurns,
+          tools: values.tools,
+          sandboxNetwork: values.sandboxNetwork,
           scope: values.scope,
           teams: values.scope === "team" ? values.teams : [],
           users: values.scope === "personal" ? values.users : [],
@@ -166,6 +194,129 @@ export function AgentForm({
             </div>
           </CardContent>
         </Card>
+
+        {agentType === "agent" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Runtime</CardTitle>
+              <CardDescription>Model and tools used when this agent runs.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="model">Model</Label>
+                  <Controller
+                    control={form.control}
+                    name="model"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => v && field.onChange(v)}
+                        items={MODELS}
+                        disabled={readOnly}
+                      >
+                        <SelectTrigger id="model" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MODELS.map((m) => (
+                            <SelectItem key={m.value} value={m.value}>
+                              {m.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="effort">Effort</Label>
+                  <Controller
+                    control={form.control}
+                    name="effort"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => v && field.onChange(v)}
+                        items={EFFORTS}
+                        disabled={readOnly}
+                      >
+                        <SelectTrigger id="effort" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EFFORTS.map((e) => (
+                            <SelectItem key={e.value} value={e.value}>
+                              {e.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="maxTurns">Max turns per run</Label>
+                  <Input
+                    id="maxTurns"
+                    type="number"
+                    min={1}
+                    max={200}
+                    aria-invalid={!!errors.maxTurns}
+                    {...form.register("maxTurns", { valueAsNumber: true })}
+                  />
+                  {errors.maxTurns && (
+                    <p className="text-sm text-destructive">{errors.maxTurns.message}</p>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <Label>Tools</Label>
+                {TOOLS.map((tool) => (
+                  <Controller
+                    key={tool.name}
+                    control={form.control}
+                    name={`tools.${tool.name}`}
+                    render={({ field }) => (
+                      <label className="flex items-start gap-3 text-sm">
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={readOnly}
+                        />
+                        <span>
+                          <span className="font-medium">{tool.label}</span>
+                          <span className="block text-muted-foreground">{tool.description}</span>
+                        </span>
+                      </label>
+                    )}
+                  />
+                ))}
+              </div>
+              {usesSandbox && (
+                <Controller
+                  control={form.control}
+                  name="sandboxNetwork"
+                  render={({ field }) => (
+                    <label className="flex items-start gap-3 text-sm">
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={readOnly}
+                      />
+                      <span>
+                        <span className="font-medium">Sandbox network access</span>
+                        <span className="block text-muted-foreground">
+                          Let commands in the sandbox reach the network (off by default).
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -254,6 +405,40 @@ export function AgentForm({
     </form>
   );
 }
+
+const MODELS = [
+  { value: "claude-opus-5-5", label: "Claude Opus 5.5" },
+  { value: "claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
+  { value: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
+  { value: "claude-fable-5-1", label: "Claude Fable 5.1" },
+];
+
+const EFFORTS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra high" },
+  { value: "max", label: "Max" },
+];
+
+const TOOLS = [
+  {
+    name: "bash",
+    label: "Bash",
+    description: "Run shell commands in an isolated sandbox container.",
+  },
+  {
+    name: "textEditor",
+    label: "File editor",
+    description: "View, create and edit files in the sandbox workspace.",
+  },
+  { name: "webSearch", label: "Web search", description: "Search the web (runs on Anthropic)." },
+  {
+    name: "webFetch",
+    label: "Web fetch",
+    description: "Fetch pages whose URLs appear in the conversation (runs on Anthropic).",
+  },
+] as const;
 
 const AGENT_TYPES = [
   { value: "agent", label: "Agent" },

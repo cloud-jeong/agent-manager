@@ -206,3 +206,48 @@ async def test_filter_by_team_and_scope(client, make_user, make_team):
 
     bad = await client.get("/api/agents", params={"teamIds": "nope"}, headers=auth(admin))
     assert bad.status_code == 400
+
+
+async def test_runtime_settings_defaults_and_update(client, make_user):
+    user = await make_user()
+    agent = await _create(client, user)
+    assert agent["model"] == "claude-opus-5-5"
+    assert agent["effort"] == "medium"
+    assert agent["maxTurns"] == 30
+    assert agent["tools"] == {
+        "bash": False,
+        "textEditor": False,
+        "webSearch": False,
+        "webFetch": False,
+    }
+    assert agent["sandboxNetwork"] is False
+
+    resp = await client.put(
+        f"/api/agents/{agent['id']}",
+        json={
+            "model": "claude-sonnet-5-5",
+            "effort": "high",
+            "maxTurns": 10,
+            "tools": {"bash": True, "textEditor": True},
+            "sandboxNetwork": True,
+        },
+        headers=auth(user),
+    )
+    assert resp.status_code == 200, resp.text
+    updated = resp.json()
+    assert updated["model"] == "claude-sonnet-5-5"
+    assert updated["effort"] == "high"
+    assert updated["maxTurns"] == 10
+    assert updated["tools"]["bash"] is True
+    assert updated["tools"]["webSearch"] is False
+    assert updated["sandboxNetwork"] is True
+
+
+async def test_runtime_settings_validation(client, make_user):
+    user = await make_user()
+    for body in ({"model": "gpt-4"}, {"effort": "extreme"}, {"maxTurns": 0}):
+        resp = await client.post("/api/agents", json={"name": "A", **body}, headers=auth(user))
+        assert resp.status_code == 400, body
+    agent = await _create(client, user)
+    resp = await client.put(f"/api/agents/{agent['id']}", json={"tools": None}, headers=auth(user))
+    assert resp.status_code == 400

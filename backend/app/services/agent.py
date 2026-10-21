@@ -20,6 +20,7 @@ from app.schemas.agent import (
     AgentLabelRead,
     AgentRead,
     AgentTeamRef,
+    AgentTools,
     AgentUpdate,
     AgentUserRef,
     AgentUserShareIn,
@@ -94,6 +95,11 @@ async def create_agent(db: AsyncSession, actor: Actor, body: AgentCreate) -> Age
         scope=body.scope,
         author_id=actor.id,
         consider_context_untrusted=body.consider_context_untrusted,
+        model=body.model,
+        effort=body.effort,
+        max_turns=body.max_turns,
+        tools=body.tools.model_dump(),
+        sandbox_network=body.sandbox_network,
     )
     await agent_team_repo.sync(db, agent.id, team_ids)
     await agent_user_repo.sync(db, agent.id, shares)
@@ -138,6 +144,8 @@ async def update_agent(
         await label_repo.sync_agent_labels(db, agent.id, _label_pairs(body.labels))
 
     columns = {k: v for k, v in data.items() if k in _COLUMN_FIELDS}
+    if body.tools is not None:
+        columns["tools"] = body.tools.model_dump()
     await agent_repo.update_fields(db, agent, columns)
     await db.commit()
     return (await hydrate(db, actor, [agent]))[0]
@@ -210,6 +218,11 @@ async def hydrate(db: AsyncSession, actor: Actor, agents: list[Agent]) -> list[A
                 author_id=a.author_id,
                 author_name=author.name if author else None,
                 consider_context_untrusted=a.consider_context_untrusted,
+                model=a.model,
+                effort=a.effort,
+                max_turns=a.max_turns,
+                tools=AgentTools.model_validate(a.tools),
+                sandbox_network=a.sandbox_network,
                 teams=[AgentTeamRef(id=t_id, name=t_name) for t_id, t_name in teams[a.id]],
                 users=[
                     AgentUserRef(id=u_id, name=name, email=email, level=level)
@@ -242,8 +255,22 @@ _COLUMN_FIELDS = {
     "agent_type",
     "scope",
     "consider_context_untrusted",
+    "model",
+    "effort",
+    "max_turns",
+    "sandbox_network",
 }
-_NON_NULLABLE_FIELDS = ("name", "agent_type", "scope", "consider_context_untrusted")
+_NON_NULLABLE_FIELDS = (
+    "name",
+    "agent_type",
+    "scope",
+    "consider_context_untrusted",
+    "model",
+    "effort",
+    "max_turns",
+    "tools",
+    "sandbox_network",
+)
 
 
 async def _get_modifiable_active_agent(

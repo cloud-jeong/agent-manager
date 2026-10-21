@@ -1195,6 +1195,44 @@
             "title": "Considercontextuntrusted",
             "default": false
           },
+          "model": {
+            "type": "string",
+            "enum": [
+              "claude-opus-5-5",
+              "claude-sonnet-5-5",
+              "claude-haiku-5-5",
+              "claude-fable-5-1"
+            ],
+            "title": "Model",
+            "default": "claude-opus-5-5"
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Effort",
+            "default": "medium"
+          },
+          "maxTurns": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Maxturns",
+            "default": 30
+          },
+          "tools": {
+            "$ref": "#/components/schemas/AgentTools"
+          },
+          "sandboxNetwork": {
+            "type": "boolean",
+            "title": "Sandboxnetwork",
+            "default": false
+          },
           "teams": {
             "items": {
               "type": "string",
@@ -1352,6 +1390,32 @@
             "type": "boolean",
             "title": "Considercontextuntrusted"
           },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "title": "Effort"
+          },
+          "maxTurns": {
+            "type": "integer",
+            "title": "Maxturns"
+          },
+          "tools": {
+            "$ref": "#/components/schemas/AgentTools"
+          },
+          "sandboxNetwork": {
+            "type": "boolean",
+            "title": "Sandboxnetwork"
+          },
           "teams": {
             "items": {
               "$ref": "#/components/schemas/AgentTeamRef"
@@ -1412,6 +1476,11 @@
           "authorId",
           "authorName",
           "considerContextUntrusted",
+          "model",
+          "effort",
+          "maxTurns",
+          "tools",
+          "sandboxNetwork",
           "teams",
           "users",
           "labels",
@@ -1440,6 +1509,33 @@
           "name"
         ],
         "title": "AgentTeamRef"
+      },
+      "AgentTools": {
+        "properties": {
+          "bash": {
+            "type": "boolean",
+            "title": "Bash",
+            "default": false
+          },
+          "textEditor": {
+            "type": "boolean",
+            "title": "Texteditor",
+            "default": false
+          },
+          "webSearch": {
+            "type": "boolean",
+            "title": "Websearch",
+            "default": false
+          },
+          "webFetch": {
+            "type": "boolean",
+            "title": "Webfetch",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "AgentTools",
+        "description": "Tools the agent may call at runtime. Stored as snake_case JSON on the agent row."
       },
       "AgentUpdate": {
         "properties": {
@@ -1531,6 +1627,75 @@
               }
             ],
             "title": "Considercontextuntrusted"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "claude-opus-5-5",
+                  "claude-sonnet-5-5",
+                  "claude-haiku-5-5",
+                  "claude-fable-5-1"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "maxTurns": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maxturns"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentTools"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sandboxNetwork": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandboxnetwork"
           },
           "teams": {
             "anyOf": [

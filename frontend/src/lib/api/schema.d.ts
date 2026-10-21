@@ -284,6 +284,29 @@ export interface components {
              * @default false
              */
             considerContextUntrusted?: boolean;
+            /**
+             * Model
+             * @default claude-opus-5-5
+             * @enum {string}
+             */
+            model?: "claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5" | "claude-fable-5-1";
+            /**
+             * Effort
+             * @default medium
+             * @enum {string}
+             */
+            effort?: "low" | "medium" | "high" | "xhigh" | "max";
+            /**
+             * Maxturns
+             * @default 30
+             */
+            maxTurns?: number;
+            tools?: components["schemas"]["AgentTools"];
+            /**
+             * Sandboxnetwork
+             * @default false
+             */
+            sandboxNetwork?: boolean;
             /** Teams */
             teams?: string[];
             /** Users */
@@ -336,6 +359,18 @@ export interface components {
             authorName: string | null;
             /** Considercontextuntrusted */
             considerContextUntrusted: boolean;
+            /** Model */
+            model: string;
+            /**
+             * Effort
+             * @enum {string}
+             */
+            effort: "low" | "medium" | "high" | "xhigh" | "max";
+            /** Maxturns */
+            maxTurns: number;
+            tools: components["schemas"]["AgentTools"];
+            /** Sandboxnetwork */
+            sandboxNetwork: boolean;
             /** Teams */
             teams: components["schemas"]["AgentTeamRef"][];
             /** Users */
@@ -368,6 +403,32 @@ export interface components {
             name: string;
         };
         /**
+         * AgentTools
+         * @description Tools the agent may call at runtime. Stored as snake_case JSON on the agent row.
+         */
+        AgentTools: {
+            /**
+             * Bash
+             * @default false
+             */
+            bash?: boolean;
+            /**
+             * Texteditor
+             * @default false
+             */
+            textEditor?: boolean;
+            /**
+             * Websearch
+             * @default false
+             */
+            webSearch?: boolean;
+            /**
+             * Webfetch
+             * @default false
+             */
+            webFetch?: boolean;
+        };
+        /**
          * AgentUpdate
          * @description Partial update: omitted fields are left unchanged.
          */
@@ -386,6 +447,15 @@ export interface components {
             scope?: ("personal" | "team" | "org") | null;
             /** Considercontextuntrusted */
             considerContextUntrusted?: boolean | null;
+            /** Model */
+            model?: ("claude-opus-5-5" | "claude-sonnet-5-5" | "claude-haiku-5-5" | "claude-fable-5-1") | null;
+            /** Effort */
+            effort?: ("low" | "medium" | "high" | "xhigh" | "max") | null;
+            /** Maxturns */
+            maxTurns?: number | null;
+            tools?: components["schemas"]["AgentTools"] | null;
+            /** Sandboxnetwork */
+            sandboxNetwork?: boolean | null;
             /** Teams */
             teams?: string[] | null;
             /** Users */
