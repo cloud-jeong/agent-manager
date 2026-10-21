@@ -53,6 +53,10 @@ flowchart LR
 8. [라벨 동기화](#8-라벨-동기화)
 9. [기본 Agent 지정](#9-기본-agent-지정)
 10. [팀 멤버 관리 (admin)](#10-팀-멤버-관리-admin)
+11. [Agent 실행: 채팅 메시지 → Run → SSE](#11-agent-실행-채팅-메시지--run--sse)
+12. [도구 호출과 샌드박스](#12-도구-호출과-샌드박스)
+13. [취소와 worker 장애](#13-취소와-worker-장애)
+14. [비동기 실행 API](#14-비동기-실행-api)
 
 ---
 
@@ -462,4 +466,194 @@ sequenceDiagram
     R-->>Q: 200 TeamRead (멤버 포함)
     Q->>Q: ["teams"], ["me"], ["agents"] 무효화
     Note over P: 이 사용자가 볼 수 있는 agent와<br/>수정 권한(canModify)이 다음 조회부터 바뀐다
+```
+
+---
+
+## 11. Agent 실행: 채팅 메시지 → Run → SSE
+
+API 서버는 Run을 큐(`runs` 테이블)에 넣고 바로 응답합니다. 실행은 별도의 worker 프로세스(`python -m app.worker`)가 맡고, 진행 상황은 `run_events`를 거쳐 SSE로 전달됩니다. 두 프로세스는 Postgres의 `LISTEN/NOTIFY`로 서로를 깨웁니다. 알림은 깨우기 용도일 뿐이고, 데이터는 항상 DB에서 다시 읽습니다. 그래서 알림을 놓쳐도 polling 주기만큼 늦어질 뿐입니다.
+
+```mermaid
+flowchart LR
+    Browser["Browser<br/>ConversationView + useRunStream"]
+    API["API (FastAPI)<br/>conversations, runs routers"]
+    Worker["Worker<br/>app/worker.py + RunExecutor"]
+    DB[("PostgreSQL<br/>runs, messages, run_events")]
+    Claude["Claude API<br/>Messages (stream)"]
+    Sandbox["Sandbox container<br/>per conversation"]
+
+    Browser -- "POST messages / GET events (SSE)" --> API
+    API -- "INSERT + NOTIFY run_queued" --> DB
+    DB -- "NOTIFY run_events" --> API
+    Worker -- "claim (SKIP LOCKED), INSERT events + NOTIFY" --> DB
+    DB -- "NOTIFY run_queued" --> Worker
+    Worker -- "stream" --> Claude
+    Worker -- "docker exec" --> Sandbox
+```
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 사용자
+    participant V as ConversationView
+    participant S as useRunStream
+    participant API as conversations / runs router
+    participant DB as PostgreSQL
+    participant W as Worker
+    participant X as RunExecutor
+    participant C as Claude API
+
+    U->>V: 메시지 입력 후 Enter
+    V->>API: POST /api/conversations/{id}/messages
+    API->>API: 대화 소유자 확인, agent가 보이고 실행 가능한지 확인 (아니면 404/400)
+    API->>DB: 활성 Run 확인 (있으면 409)
+    API->>DB: INSERT messages(user), INSERT runs(queued), pg_notify('run_queued')
+    API->>DB: COMMIT
+    API-->>V: 201 {message, run}
+    V->>V: 대화 다시 조회 → activeRun 생김
+    V->>S: activeRun.id 구독 시작
+    S->>API: GET /api/runs/{id}/events (fetch + ReadableStream)
+    API->>DB: LISTEN run_events, 기존 이벤트 조회 (없음)
+
+    DB-->>W: NOTIFY run_queued
+    W->>DB: UPDATE runs SET status='running' WHERE id = (SELECT … FOR UPDATE SKIP LOCKED)
+    W->>X: execute()
+    X->>DB: agent, 대화 기록, MCP 서버 조회
+    X->>DB: run_events 'run_started' + NOTIFY
+    loop 턴마다 (최대 agent.maxTurns)
+        X->>C: messages.stream(system, history, tools, thinking adaptive, effort, fallbacks)
+        C-->>X: thinking/text delta
+        X->>DB: thinking_delta / text_delta (100ms 단위로 묶어서) + NOTIFY
+        DB-->>API: NOTIFY run_events
+        API-->>S: event: text_delta
+        S-->>V: 진행 중인 출력 갱신
+        C-->>X: 최종 메시지 (stop_reason, usage)
+        X->>DB: usage 누적, INSERT messages(assistant, content 원본), 'message' 이벤트
+        API-->>S: event: message
+        S->>API: GET /api/conversations/{id} (저장된 메시지로 교체)
+        alt stop_reason = tool_use
+            Note over X: 12번 다이어그램 (도구 실행 후 다음 턴)
+        else end_turn
+            Note over X: 루프 종료
+        end
+    end
+    X->>DB: UPDATE runs status='succeeded' + 'run_finished' 이벤트 (한 트랜잭션)
+    API-->>S: event: run_finished, event: done
+    S->>S: 대화·Run 캐시 무효화
+```
+
+stop_reason별 처리:
+
+| stop_reason | 처리 |
+|---|---|
+| `end_turn` | assistant 메시지 저장 후 `succeeded` |
+| `tool_use` | 저장 → 도구 실행 → tool_result를 user 메시지 **하나**로 저장 → 다음 턴 |
+| `pause_turn` | 서버 도구(web search 등)가 반복 한도에 걸린 경우. 저장한 뒤 user 메시지 없이 같은 기록으로 다시 요청 |
+| `max_tokens` + tool_use | 잘린 도구 입력은 실행하지 않는다. 저장하지 않고 `failed` |
+| `refusal` | 부분 출력을 버리고(`turn_reset`) `failed`. `fallbacks: "default"`로 서버가 다른 모델로 재시도한 뒤에도 거절된 경우다 |
+
+---
+
+## 12. 도구 호출과 샌드박스
+
+bash와 파일 편집 도구는 대화마다 하나씩 있는 컨테이너에서 실행합니다. 컨테이너는 처음 도구를 호출할 때 만들어집니다. web search/fetch와 MCP 도구는 Anthropic 서버가 직접 실행하므로 worker를 거치지 않고, 결과가 assistant content에 들어옵니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant X as RunExecutor
+    participant T as AgentToolbox
+    participant P as DockerSandboxProvider
+    participant D as Docker daemon
+    participant B as agent-sandbox-{conversationId}
+    participant DB as PostgreSQL
+
+    X->>DB: 'tool_call' 이벤트 {id, name, input}
+    X->>T: execute("bash", {command})
+    T->>T: agent에서 켠 도구인지 확인 (아니면 is_error)
+    alt 이번 Run에서 첫 도구 호출
+        T->>P: get(conversationId, network=agent.sandboxNetwork)
+        P->>D: 컨테이너 조회
+        alt 없음 또는 네트워크 설정이 바뀜
+            P->>D: run(image, user 1000, cap_drop ALL, read_only,<br/>network none, mem/cpu/pids 제한,<br/>volume agent-ws-{id} → /workspace)
+        else 멈춰 있음 (idle reaper가 stop)
+            P->>D: start
+        end
+    end
+    T->>B: exec: timeout 120 bash -c wrapper "$command"
+    Note over B: 이전 cd 위치에서 실행하고,<br/>끝난 위치를 /tmp/.agent_cwd에 저장
+    B-->>T: exit code + stdout/stderr
+    T->>T: 30KB 넘으면 가운데 생략, exit code·timeout 표시
+    T-->>X: ToolOutput(content, is_error)
+    X->>DB: 'tool_result' 이벤트
+    X->>DB: INSERT messages(user, [tool_result …])
+```
+
+파일 편집 도구(`str_replace_based_edit_tool`)의 경로는 정규화한 뒤 `/workspace` 안인지 확인합니다. 읽기와 쓰기는 Docker archive API(`get_archive`/`put_archive`)로 합니다.
+
+worker의 reaper는 30초마다 다음을 처리합니다.
+- 30분 동안 쓰지 않은 컨테이너를 stop한다. volume은 남는다.
+- 대화가 삭제된 컨테이너와 volume을 지운다.
+
+---
+
+## 13. 취소와 worker 장애
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 사용자
+    participant API as runs router
+    participant DB as PostgreSQL
+    participant X as RunExecutor
+    participant H as watcher (같은 executor)
+    participant R as reaper (다른 worker 포함)
+
+    alt queued 상태에서 취소
+        U->>API: POST /api/runs/{id}/cancel
+        API->>DB: status='cancelled', cancel_requested=true, 'run_finished' 이벤트
+    else running 상태에서 취소
+        U->>API: POST /api/runs/{id}/cancel
+        API->>DB: cancel_requested=true
+        H->>DB: 2초마다 heartbeat_at 갱신 RETURNING cancel_requested
+        H->>X: loop task cancel()
+        X->>DB: finish_run(cancelled)
+        Note over X,DB: 마지막 메시지가 tool_use면<br/>"Not executed" tool_result를 채워 넣는다
+    end
+
+    alt worker가 SIGTERM으로 종료
+        X->>DB: finish_run(failed, "The worker stopped while running")
+    else worker 프로세스가 죽음 (heartbeat 끊김)
+        R->>DB: status='running' AND heartbeat_at < now() - 60s
+        R->>DB: finish_run(failed, "stopped responding")
+    end
+```
+
+자동으로 재시도하지는 않습니다. 도구가 이미 부수효과(파일 변경, 외부 호출)를 냈을 수 있기 때문입니다.
+
+---
+
+## 14. 비동기 실행 API
+
+화면 없이 agent를 실행하고, 결과를 나중에 조회합니다. 내부적으로는 채팅과 같은 경로(대화 + Run)를 씁니다.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cl as API 클라이언트
+    participant API as runs router
+    participant DB as PostgreSQL
+    participant W as Worker
+
+    Cl->>API: POST /api/agents/{agentId}/runs {input}
+    API->>API: agent가 보이고 실행 가능한지 확인
+    API->>DB: INSERT conversations(title=input 앞부분), messages(user), runs(trigger='api')
+    API-->>Cl: 202 RunRead {id, status: queued}
+    W->>DB: claim → 실행 (11번과 동일)
+    loop 끝날 때까지
+        Cl->>API: GET /api/runs/{id}
+        API-->>Cl: RunDetail {status, output?, error?}
+    end
+    Note over Cl: polling 대신 GET /api/runs/{id}/events를 구독해도 된다.<br/>결과 대화는 /chat/{conversationId}에서 이어갈 수 있다
 ```

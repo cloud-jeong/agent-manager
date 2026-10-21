@@ -296,3 +296,31 @@ docker/sandbox/Dockerfile
 - `DockerSandbox` 통합 테스트는 Docker가 있을 때만 돈다(`@pytest.mark.docker`).
   - 네트워크 차단, `/workspace` 밖 경로 거부, timeout을 확인한다.
 - 실제 Anthropic API를 쓰는 E2E는 자동 테스트에 넣지 않는다. 수동으로 확인한다.
+
+## 구현 중 변경사항
+- **SSE 라이브러리 없이 구현**: `sse-starlette` 대신 FastAPI `StreamingResponse`로 직접 만들었다.
+  - LISTEN 연결은 프로세스마다 하나(`app/pubsub.py`의 `Notifier`)를 두고 구독자에게 나눠 준다.
+  - 알림은 깨우기 용도일 뿐이다. 데이터는 DB에서 다시 읽고, 2초마다 polling도 한다.
+- **`conversations.sandbox_container_id` 제거**: 컨테이너 이름이 `agent-sandbox-<conversation id>`로 정해지므로 저장할 필요가 없다.
+- **대화 삭제 시 샌드박스 정리**: API 서버는 Docker 소켓에 접근하지 않는다. 대신 worker의 reaper가 대화가 없어진 컨테이너와 volume을 지운다(30초 주기).
+- **bash 세션**: 명령마다 새 `bash -c`로 실행한다.
+  - 작업 디렉토리는 컨테이너의 `/tmp/.agent_cwd`에 저장해서 다음 호출에서 이어 쓴다.
+  - 환경변수와 백그라운드 프로세스는 유지되지 않는다.
+  - `restart`는 작업 디렉토리를 `/workspace`로 되돌린다.
+- **명령어 허용 목록(allowlist)을 두지 않음**: 범용 agent에 allowlist는 현실적이지 않다. 대신 격리로 막는다.
+  - 비 root 사용자, 모든 capability 제거, `no-new-privileges`
+  - 읽기 전용 루트 파일시스템, 네트워크 차단(기본값)
+  - 메모리·CPU·프로세스 수 제한, 명령 timeout
+- **파일 편집 도구**: `text_editor_20250728`에는 `undo_edit`가 없어서 지원하지 않는다. `create`는 기존 파일을 백업 없이 덮어쓴다.
+- **모델 선택**: `claude-opus-5-5`(기본), `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1` 중에서 고른다.
+  - `fallbacks: "default"`는 Haiku 5.5를 제외하고 보낸다. Haiku 5.5는 서버 측 fallback을 지원하지 않는다.
+- **API 키 읽기**: `ANTHROPIC_API_KEY`를 설정(`.env`)에서 읽어 SDK client에 넘긴다. pydantic-settings는 `.env`를 `os.environ`에 넣지 않기 때문이다. 값이 없으면 SDK가 자체적으로 자격 증명을 찾는다.
+- **MCP 서버 URL**: `https://`만 허용한다. Claude가 Anthropic 서버에서 직접 연결하므로 공개 HTTPS 주소여야 한다.
+- **MCP 서버 목록 권한**: 모든 사용자가 볼 수 있다(agent 폼에서 고르기 위해). token은 응답에 넣지 않는다.
+
+## 검증
+- `make test`: 74개 테스트
+  - 실행 경로는 `FakeLLM`과 `FakeSandbox`로 검증한다.
+  - `test_llm.py`는 가짜 HTTP 응답으로 실제 SDK 요청 형식과 스트림 파싱을 확인한다.
+  - `test_sandbox_docker.py`는 Docker와 sandbox 이미지가 있을 때만 돈다. 실제 컨테이너에서 격리, 영속성, timeout, 정리를 확인한다.
+- **실제 Anthropic API 호출은 자동 테스트에 넣지 않았다.** `ANTHROPIC_API_KEY`를 설정하고 `make dev-worker`로 수동 확인한다.

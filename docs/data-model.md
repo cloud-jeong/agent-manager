@@ -13,7 +13,7 @@ Agent Manager가 다루는 데이터를 계층별로 정리한 문서입니다.
 
 ## 1. DB 스키마 (ERD)
 
-정의 위치: `backend/app/models/`, migration: `backend/alembic/versions/0001_initial_schema.py`
+정의 위치: `backend/app/models/`, migration: `backend/alembic/versions/0001_initial_schema.py` (실행 환경 테이블은 [아래](#실행-환경-테이블-migration-00020004))
 
 ```mermaid
 erDiagram
@@ -64,6 +64,11 @@ erDiagram
         varchar scope "personal | team | org"
         uuid author_id FK "SET NULL"
         boolean consider_context_untrusted
+        varchar model "실행 설정 (0002)"
+        varchar effort "low..max"
+        int max_turns "1..200"
+        jsonb tools "bash, text_editor, web_search, web_fetch"
+        boolean sandbox_network
         timestamptz created_at
         timestamptz updated_at
         timestamptz deleted_at "NULL = active"
@@ -123,6 +128,101 @@ erDiagram
 | agent 영구 삭제 | `agent_teams`, `agent_users`, `agent_labels` CASCADE, `member_settings` SET NULL, 사용되지 않는 라벨 키·값 prune |
 | team 삭제 | `team_members`, `agent_teams` CASCADE (그 팀에만 공유된 agent는 admin만 보게 된다) |
 | user 삭제 | `team_members`, `agent_users`, `member_settings` CASCADE, `agents.author_id` SET NULL |
+
+### 실행 환경 테이블 (migration 0002–0004)
+
+Agent 실행에 쓰는 테이블입니다. 설계 배경은 [runtime-plan.md](runtime-plan.md)를 참고하세요.
+
+```mermaid
+erDiagram
+    agents ||--o{ conversations : "runs in"
+    users ||--o{ conversations : owns
+    conversations ||--o{ messages : contains
+    conversations ||--o{ runs : "executes"
+    runs ||--o{ run_events : streams
+    runs |o--o{ messages : produced
+    agents ||--o{ agent_mcp_servers : uses
+    mcp_servers ||--o{ agent_mcp_servers : "used by"
+
+    conversations {
+        uuid id PK
+        uuid agent_id FK "CASCADE"
+        uuid user_id FK "CASCADE"
+        varchar title
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    messages {
+        uuid id PK
+        uuid conversation_id FK "CASCADE"
+        int seq "conversation 내 순서, UNIQUE(conversation_id, seq)"
+        varchar role "user | assistant"
+        jsonb content "Messages API content block 배열 원본"
+        uuid run_id FK "SET NULL, 사용자 입력이면 NULL"
+        timestamptz created_at
+    }
+    runs {
+        uuid id PK
+        uuid conversation_id FK "CASCADE"
+        uuid agent_id FK "CASCADE"
+        uuid user_id FK "CASCADE"
+        varchar trigger "chat | api"
+        varchar status "queued | running | succeeded | failed | cancelled"
+        boolean cancel_requested
+        text error
+        varchar model "실제로 응답한 모델"
+        int input_tokens
+        int output_tokens
+        int cache_read_input_tokens
+        timestamptz heartbeat_at
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz finished_at
+    }
+    run_events {
+        uuid run_id PK,FK "CASCADE"
+        int seq PK
+        varchar type
+        jsonb data
+        timestamptz created_at
+    }
+    mcp_servers {
+        uuid id PK
+        varchar name UK "[A-Za-z0-9_-]{1,64}"
+        varchar url "https만"
+        text description
+        text token_encrypted "Fernet, API로 반환하지 않음"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    agent_mcp_servers {
+        uuid agent_id PK,FK "CASCADE"
+        uuid mcp_server_id PK,FK "CASCADE"
+    }
+```
+
+| 테이블 | 역할 | 주요 제약 |
+|---|---|---|
+| `conversations` | 사용자 한 명과 agent 하나의 대화. 만든 사용자만 볼 수 있다 | 인덱스 (user_id, updated_at) |
+| `messages` | 대화 기록. API에 보낸/받은 content block을 그대로 저장한다 | UNIQUE (conversation_id, seq), `role` CHECK |
+| `runs` | agent loop 실행 한 번 (user 메시지 → 최종 응답) | `status`, `trigger` CHECK. **partial unique index**: 대화마다 `queued`/`running` Run은 하나뿐 |
+| `run_events` | SSE로 보내는 진행 이벤트. `seq`가 SSE의 event id다 | PK (run_id, seq) |
+| `mcp_servers` | admin이 등록한 원격 MCP 서버 | `name` unique |
+| `agent_mcp_servers` | agent가 쓰는 MCP 서버 | 서버 삭제 시 연결도 CASCADE |
+
+실행 환경의 불변식:
+
+- **대화 기록은 append-only다.** `messages` 행은 수정하거나 지우지 않는다. assistant의 thinking block은 대화에 묶여 있어서, 기록을 바꾸면 다음 요청에서 무효가 된다.
+- 마지막 메시지가 `tool_use`를 가진 assistant 메시지인 채로 Run이 끝나지 않는다. 취소나 실패로 도구를 실행하지 못했으면 `finish_run`이 `is_error` tool_result를 채워 넣어서, 대화를 이어갈 수 있게 한다.
+- `status`가 `succeeded`/`failed`/`cancelled`가 된 Run은 다시 바뀌지 않는다. `runs.finish`는 `status = 'running'`일 때만 갱신한다.
+- `run_finished` 이벤트와 최종 status는 같은 트랜잭션에서 기록된다. 그래서 SSE는 "status가 끝났고 새 이벤트가 없다"를 스트림 종료 조건으로 쓸 수 있다.
+
+| 동작 | 결과 |
+|---|---|
+| 대화 삭제 | `messages`, `runs`, `run_events` CASCADE. 샌드박스 컨테이너와 volume은 worker의 reaper가 지운다. 활성 Run이 있으면 409 |
+| agent 영구 삭제 | 그 agent의 `conversations`(와 하위 전부), `agent_mcp_servers` CASCADE |
+| agent soft delete | 대화는 남는다. 읽을 수는 있지만 새 메시지는 404 |
+| MCP 서버 삭제 | `agent_mcp_servers` CASCADE (agent에서 자동으로 빠진다) |
 
 ---
 
@@ -201,6 +301,12 @@ classDiagram
         +agentType: agent
         +scope: personal
         +bool considerContextUntrusted: false
+        +model: claude-opus-5-5
+        +effort: medium
+        +int maxTurns: 30
+        +AgentTools tools
+        +bool sandboxNetwork: false
+        +UUID[] mcpServers
         +UUID[] teams
         +AgentUserShareIn[] users
         +AgentLabelIn[] labels
@@ -220,6 +326,12 @@ classDiagram
         +UUID? authorId
         +str? authorName
         +bool considerContextUntrusted
+        +str model
+        +effort
+        +int maxTurns
+        +AgentTools tools
+        +bool sandboxNetwork
+        +AgentMcpServerRef[] mcpServers
         +AgentTeamRef[] teams
         +AgentUserRef[] users
         +AgentLabelRead[] labels
@@ -268,6 +380,83 @@ classDiagram
     PaginatedAgentRead --> AgentRead
     PaginatedAgentRead --> Pagination
 ```
+
+### 실행 환경 API 모델
+
+정의 위치: `backend/app/schemas/runtime.py`
+
+```mermaid
+classDiagram
+    class ConversationDetail {
+        +UUID id
+        +AgentRef agent
+        +str title
+        +MessageRead[] messages
+        +RunRead? activeRun
+        +datetime createdAt
+        +datetime updatedAt
+    }
+    class MessageRead {
+        +UUID id
+        +int seq
+        +role: user | assistant
+        +object[] content "content block 원본"
+        +UUID? runId
+        +datetime createdAt
+    }
+    class RunRead {
+        +UUID id
+        +UUID conversationId
+        +AgentRef agent
+        +trigger: chat | api
+        +status
+        +str? error
+        +str? model
+        +int inputTokens
+        +int outputTokens
+        +int cacheReadInputTokens
+        +datetime createdAt
+        +datetime? startedAt
+        +datetime? finishedAt
+    }
+    class RunDetail {
+        +str? output "마지막 assistant 메시지의 text"
+    }
+    class McpServerRead {
+        +UUID id
+        +str name
+        +str url
+        +str? description
+        +bool hasToken "token 자체는 반환하지 않음"
+    }
+    RunDetail --|> RunRead
+    ConversationDetail --> MessageRead
+    ConversationDetail --> RunRead
+```
+
+| 요청 | 본문 | 응답 |
+|---|---|---|
+| `POST /api/conversations` | `{agentId, title?}` | `ConversationRead` (201) |
+| `POST /api/conversations/{id}/messages` | `{content}` | `{message, run}` (201). 활성 Run이 있으면 409 |
+| `POST /api/agents/{id}/runs` | `{input}` | `RunRead` (202). 새 대화를 만들고 큐에 넣는다 |
+| `GET /api/runs/{id}` | — | `RunDetail` |
+| `POST /api/runs/{id}/cancel` | — | `RunRead`. 끝난 Run이면 409 |
+| `GET /api/runs/{id}/events` | — | `text/event-stream`. `?after=seq` 또는 `Last-Event-ID`로 이어받는다 |
+| `POST /api/mcp-servers` (admin) | `{name, url, description?, token?}` | `McpServerRead` (201) |
+| `PUT /api/mcp-servers/{id}` (admin) | 보낸 필드만 변경. `token: null`이면 token 제거 | `McpServerRead` |
+
+SSE 이벤트 (`event:` 이름 → `data:` JSON):
+
+| 이벤트 | data | 의미 |
+|---|---|---|
+| `run_started` | `{model}` | worker가 실행을 시작했다 |
+| `thinking_delta` / `text_delta` | `{text}` | 현재 턴의 출력 조각 (약 100ms 단위로 묶임) |
+| `turn_reset` | `{}` | 지금까지 스트리밍한 현재 턴 출력을 버린다 (fallback 모델로 전환, 거절) |
+| `message` | `{messageId}` | 메시지 하나가 DB에 저장됐다 |
+| `tool_call` / `tool_result` | `{id, name, input}` / `{id, output, isError}` | client 도구 실행 |
+| `usage` | `{model, inputTokens, outputTokens, cacheReadInputTokens}` | 누적 토큰 사용량 |
+| `run_finished` | `{status, error}` | Run 종료 (DB에 저장되는 마지막 이벤트) |
+| `done` | `{status}` | 스트림 종료 (저장되지 않음, id 없음) |
 
 ### 입력 검증
 
@@ -322,6 +511,10 @@ classDiagram
 | `["agents", "labels", ...]` | 라벨 키·값 자동완성 | 위와 같음 |
 | `["members", "default-agent"]` | 내 기본 agent id | 기본 agent 변경 (응답으로 직접 갱신), agent 변경 |
 | `["teams"]`, `["users"]` | 팀(멤버 포함), 사용자 목록 | 팀·멤버·사용자 변경 |
+| `["conversations", "list"]` | 내 대화 목록 (사이드바) | 대화 생성·삭제, 메시지 전송, Run 종료 |
+| `["conversations", "detail", id]` | 대화 + 메시지 + 활성 Run | 메시지 전송, SSE의 `message`/`run_finished` 이벤트 (refetch) |
+| `["runs", "list", params]` | Run 이력 | Run 종료, 대화 삭제. 활성 Run이 있으면 3초마다 refetch |
+| `["mcp-servers"]` | MCP 서버 목록 | MCP 서버 추가·삭제 (agent 캐시도 함께) |
 
 ### URL 상태 — Agent 목록
 
@@ -342,4 +535,5 @@ classDiagram
 | 상태 | 위치 | 설명 |
 |---|---|---|
 | 액세스 토큰 | `localStorage["agent-manager.token"]` (`lib/auth.ts`) | 변경 시 구독자에게 알린다. `AppShell`이 구독해서 토큰이 사라지면 `/login`으로 보낸다 |
+| 실행 중인 Run의 출력 | `useRunStream` (`components/chat/use-run-stream.ts`) | 아직 저장되지 않은 현재 턴의 thinking/text와 도구 결과. 서버가 메시지를 저장하면(`message` 이벤트) 대화를 다시 불러온 뒤 비운다 |
 | Agent 폼 값 | react-hook-form + zod (`components/agents/agent-form.tsx`) | 제출 시 서버 규칙 일부(팀 1개 이상, 라벨 키 중복)를 미리 검사한다. 최종 판단은 서버가 한다 |
