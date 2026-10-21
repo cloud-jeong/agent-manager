@@ -34,8 +34,6 @@ class Conversation(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    # Docker container backing the bash/text editor tools; created on first tool call.
-    sandbox_container_id: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = created_at_col()
     updated_at: Mapped[datetime] = updated_at_col()
 

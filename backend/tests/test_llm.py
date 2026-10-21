@@ -63,9 +63,7 @@ def _client(requests: list[dict]) -> AsyncAnthropic:
                 "beta": request.headers.get("anthropic-beta", ""),
             }
         )
-        return httpx2.Response(
-            200, headers={"content-type": "text/event-stream"}, content=_STREAM
-        )
+        return httpx2.Response(200, headers={"content-type": "text/event-stream"}, content=_STREAM)
 
     return AsyncAnthropic(
         api_key="test-key",

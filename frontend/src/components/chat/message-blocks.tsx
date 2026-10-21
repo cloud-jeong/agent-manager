@@ -220,6 +220,23 @@ function toolSummary(name: string, input: unknown): string {
 function formatInput(name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>;
   if (name === "bash" && typeof args.command === "string") return args.command;
+  if (name === "str_replace_based_edit_tool") {
+    if (args.command === "create") return String(args.file_text ?? "");
+    if (args.command === "str_replace") {
+      const lines = (value: unknown, prefix: string) =>
+        String(value ?? "")
+          .split("\n")
+          .map((line) => prefix + line)
+          .join("\n");
+      return `${lines(args.old_str, "- ")}\n${lines(args.new_str, "+ ")}`;
+    }
+    if (args.command === "insert") {
+      return `after line ${String(args.insert_line)}:\n${String(args.insert_text ?? "")}`;
+    }
+    if (args.command === "view") {
+      return args.view_range ? `lines ${JSON.stringify(args.view_range)}` : "whole file";
+    }
+  }
   return JSON.stringify(input, null, 2);
 }
 

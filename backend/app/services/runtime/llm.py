@@ -10,6 +10,8 @@ from typing import Any, Literal, Protocol
 
 from anthropic import AsyncAnthropic
 
+from app.config import get_settings
+
 DeltaKind = Literal["text", "thinking"]
 OnDelta = Callable[[DeltaKind, str], Awaitable[None]]
 # Called when output streamed so far for this turn must be discarded
@@ -52,10 +54,13 @@ class LLM(Protocol):
 
 
 class AnthropicLLM:
-    """Reads ANTHROPIC_API_KEY (or another SDK credential source) from the environment."""
+    """Uses ANTHROPIC_API_KEY from the settings (.env), else the SDK's own credential lookup."""
 
     def __init__(self, client: AsyncAnthropic | None = None):
-        self._client = client or AsyncAnthropic()
+        if client is None:
+            api_key = get_settings().anthropic_api_key
+            client = AsyncAnthropic(api_key=api_key) if api_key else AsyncAnthropic()
+        self._client = client
 
     async def run_turn(
         self, request: TurnRequest, *, on_delta: OnDelta, on_reset: OnReset

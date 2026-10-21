@@ -25,7 +25,6 @@ def upgrade() -> None:
         sa.Column("agent_id", sa.UUID(), nullable=False),
         sa.Column("user_id", sa.UUID(), nullable=False),
         sa.Column("title", sa.String(length=200), nullable=False),
-        sa.Column("sandbox_container_id", sa.String(length=100), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

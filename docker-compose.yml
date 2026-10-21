@@ -27,6 +27,28 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Executes agent runs. Needs the Docker socket to start sandbox containers
+  # (build their image first with `make sandbox-image`). Access to the socket is
+  # root-equivalent on the host: see docs/runtime-plan.md before deploying this.
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      AGENT_MANAGER_DATABASE_URL: postgresql+asyncpg://agent_manager:agent_manager@postgres:5432/agent_manager
+      AGENT_MANAGER_SANDBOX_RUNTIME: ${AGENT_MANAGER_SANDBOX_RUNTIME:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      backend:
+        # The backend container applies migrations on start.
+        condition: service_healthy
 
   frontend:
     build:

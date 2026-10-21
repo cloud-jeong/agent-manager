@@ -9,10 +9,18 @@ from sqlalchemy import update
 from app.db import SessionLocal
 from app.models import Run
 from app.services.runtime import executor as executor_module
-from app.services.runtime.tools import ServerToolbox, ToolOutput
+from app.services.runtime.tools import AgentToolbox, ToolOutput
 from app.worker import Worker, reap_stale_runs
 from tests.conftest import auth
-from tests.fakes import FakeLLM, RecordingToolbox, block_forever, text_turn, tool_turn, turn
+from tests.fakes import (
+    FakeLLM,
+    FakeSandboxProvider,
+    RecordingToolbox,
+    block_forever,
+    text_turn,
+    tool_turn,
+    turn,
+)
 
 
 async def _chat(client, user, content="Hello", **agent_body):
@@ -35,7 +43,9 @@ async def _chat(client, user, content="Hello", **agent_body):
 def _worker(llm, toolbox=None):
     return Worker(
         llm=llm,
-        toolbox_factory=lambda agent, _c: toolbox or ServerToolbox(agent),
+        toolbox_factory=lambda agent, c: (
+            toolbox or AgentToolbox(agent, c.id, FakeSandboxProvider())
+        ),
         concurrency=4,
     )
 
@@ -338,7 +348,7 @@ async def test_runs_respect_concurrency_limit(client, make_user):
         await _chat(client, user)
     worker = Worker(
         llm=FakeLLM(block_forever, block_forever, block_forever),
-        toolbox_factory=lambda agent, _c: ServerToolbox(agent),
+        toolbox_factory=lambda agent, c: AgentToolbox(agent, c.id, FakeSandboxProvider()),
         concurrency=2,
     )
     assert len(await worker.claim_available()) == 2

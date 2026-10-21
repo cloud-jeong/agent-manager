@@ -9,15 +9,18 @@ import asyncio
 import logging
 import signal
 import uuid
+from collections.abc import Awaitable, Callable
 
 from app.config import get_settings
 from app.db import SessionLocal
 from app.pubsub import RUN_QUEUED, Notifier, wait
+from app.repositories import conversation as conversation_repo
 from app.repositories import run as run_repo
 from app.repositories import run_event as run_event_repo
 from app.services.runtime.executor import Outcome, RunExecutor, ToolboxFactory, finish_run
 from app.services.runtime.llm import LLM, AnthropicLLM
-from app.services.runtime.tools import ServerToolbox
+from app.services.runtime.sandbox import DockerSandboxProvider
+from app.services.runtime.tools import AgentToolbox
 
 logger = logging.getLogger("app.worker")
 
@@ -27,10 +30,18 @@ _REAP_EVERY_SECONDS = 30.0
 
 
 class Worker:
-    def __init__(self, *, llm: LLM, toolbox_factory: ToolboxFactory, concurrency: int):
+    def __init__(
+        self,
+        *,
+        llm: LLM,
+        toolbox_factory: ToolboxFactory,
+        concurrency: int,
+        reap_sandboxes: Callable[[], Awaitable[None]] | None = None,
+    ):
         self._llm = llm
         self._toolbox_factory = toolbox_factory
         self._concurrency = concurrency
+        self._reap_sandboxes = reap_sandboxes
         self._active: dict[uuid.UUID, asyncio.Task[None]] = {}
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -39,7 +50,11 @@ class Worker:
         try:
             async with notifier.subscribe() as queued:
                 while not stop.is_set():
-                    await self.claim_available()
+                    try:
+                        await self.claim_available()
+                    except Exception:
+                        # e.g. the database is restarting; retry after the poll interval
+                        logger.exception("Claiming runs failed")
                     await self._wait_for_work(queued, stop)
         finally:
             reaper.cancel()
@@ -99,6 +114,11 @@ class Worker:
                 await reap_stale_runs()
             except Exception:
                 logger.exception("Reaping stale runs failed")
+            if self._reap_sandboxes is not None:
+                try:
+                    await self._reap_sandboxes()
+                except Exception:
+                    logger.exception("Reaping sandboxes failed")
             await asyncio.sleep(_REAP_EVERY_SECONDS)
 
     async def _shutdown(self) -> None:
@@ -134,10 +154,17 @@ async def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
+    sandboxes = DockerSandboxProvider()
+
+    async def existing_conversations(ids: set[uuid.UUID]) -> set[uuid.UUID]:
+        async with SessionLocal() as db:
+            return await conversation_repo.existing_ids(db, ids)
+
     worker = Worker(
         llm=AnthropicLLM(),
-        toolbox_factory=lambda agent, _conversation: ServerToolbox(agent),
+        toolbox_factory=lambda agent, conversation: AgentToolbox(agent, conversation.id, sandboxes),
         concurrency=get_settings().worker_concurrency,
+        reap_sandboxes=lambda: sandboxes.reap(existing_conversations),
     )
     logger.info("Worker started (concurrency %d)", get_settings().worker_concurrency)
     await worker.run(stop)

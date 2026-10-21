@@ -65,16 +65,6 @@ async def touch(db: AsyncSession, conversation_id: uuid.UUID) -> None:
     )
 
 
-async def set_sandbox(
-    db: AsyncSession, conversation_id: uuid.UUID, container_id: str | None
-) -> None:
-    await db.execute(
-        update(Conversation)
-        .where(Conversation.id == conversation_id)
-        .values(sandbox_container_id=container_id)
-    )
-
-
 async def delete_conversation(db: AsyncSession, conversation: Conversation) -> None:
     await db.execute(delete(Conversation).where(Conversation.id == conversation.id))
 

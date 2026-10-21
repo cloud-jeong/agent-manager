@@ -2,10 +2,12 @@
 
 import asyncio
 import copy
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.services.runtime.llm import OnDelta, OnReset, TurnRequest, TurnResult
+from app.services.runtime.sandbox import ExecResult
 from app.services.runtime.tools import ToolOutput
 
 
@@ -77,3 +79,44 @@ class RecordingToolbox:
     async def execute(self, name: str, tool_input: Any) -> ToolOutput:
         self.calls.append((name, tool_input))
         return self._outputs.get(name, ToolOutput(f"ran {name}"))
+
+
+class FakeSandbox:
+    """In-memory files; commands are recorded and answered from `results` (default: ok)."""
+
+    def __init__(self):
+        self.files: dict[str, bytes] = {}
+        self.commands: list[list[str]] = []
+        self.results: list[ExecResult] = []
+
+    async def exec(self, argv: list[str], *, timeout: int) -> ExecResult:
+        self.commands.append(argv)
+        if argv[:2] == ["test", "-d"]:
+            prefix = argv[2].rstrip("/") + "/"
+            return ExecResult(0 if any(f.startswith(prefix) for f in self.files) else 1, "")
+        if argv[0] == "find":
+            prefix = argv[1].rstrip("/") + "/"
+            return ExecResult(0, "\n".join(f for f in self.files if f.startswith(prefix)))
+        if argv[0] in ("mkdir", "rm"):
+            return ExecResult(0, "")
+        return self.results.pop(0) if self.results else ExecResult(0, "ok\n")
+
+    async def read_file(self, path: str) -> bytes:
+        if path in self.files:
+            return self.files[path]
+        if any(f.startswith(path.rstrip("/") + "/") for f in self.files):
+            raise IsADirectoryError(path)
+        raise FileNotFoundError(path)
+
+    async def write_file(self, path: str, content: bytes) -> None:
+        self.files[path] = content
+
+
+class FakeSandboxProvider:
+    def __init__(self):
+        self.sandboxes: dict[uuid.UUID, FakeSandbox] = {}
+        self.requests: list[tuple[uuid.UUID, bool]] = []
+
+    async def get(self, conversation_id: uuid.UUID, *, network: bool) -> FakeSandbox:
+        self.requests.append((conversation_id, network))
+        return self.sandboxes.setdefault(conversation_id, FakeSandbox())

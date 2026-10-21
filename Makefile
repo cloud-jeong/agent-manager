@@ -1,6 +1,6 @@
-.PHONY: up down db migrate seed test lint dev-backend dev-frontend gen-api
+.PHONY: up down db migrate seed test lint dev-backend dev-worker dev-frontend gen-api sandbox-image
 
-up:
+up: sandbox-image
 	docker compose up -d --build
 
 down:
@@ -25,6 +25,14 @@ lint:
 
 dev-backend:
 	cd backend && uv run uvicorn app.main:app --reload --port 8000
+
+# Executes agent runs (needs ANTHROPIC_API_KEY and, for bash/file tools, the sandbox image)
+dev-worker:
+	cd backend && uv run python -m app.worker
+
+# Image for the per-conversation sandbox containers used by the bash and file editor tools
+sandbox-image:
+	docker build -t agent-manager-sandbox:latest docker/sandbox
 
 dev-frontend:
 	cd frontend && pnpm dev
