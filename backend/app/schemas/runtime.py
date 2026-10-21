@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import AnyHttpUrl, Field
 
 from app.schemas.common import CamelModel
 
@@ -85,3 +85,34 @@ class ConversationDetail(ConversationRead):
 class SendMessageResponse(CamelModel):
     message: MessageRead
     run: RunRead
+
+
+# Sent to the API as the server's `name`.
+_MCP_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+
+
+class McpServerCreate(CamelModel):
+    name: str = Field(pattern=_MCP_NAME_PATTERN)
+    url: AnyHttpUrl
+    description: str | None = None
+    # Bearer token Claude sends to the server. Write-only: never returned by the API.
+    token: str | None = Field(default=None, min_length=1, max_length=10_000)
+
+
+class McpServerUpdate(CamelModel):
+    """Partial update. `token: null` removes the token; omit it to keep the current one."""
+
+    name: str | None = Field(default=None, pattern=_MCP_NAME_PATTERN)
+    url: AnyHttpUrl | None = None
+    description: str | None = None
+    token: str | None = Field(default=None, min_length=1, max_length=10_000)
+
+
+class McpServerRead(CamelModel):
+    id: uuid.UUID
+    name: str
+    url: str
+    description: str | None
+    has_token: bool
+    created_at: datetime
+    updated_at: datetime

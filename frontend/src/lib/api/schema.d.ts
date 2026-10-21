@@ -253,6 +253,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Mcp Servers */
+        get: operations["listMcpServers"];
+        put?: never;
+        /** Create Mcp Server */
+        post: operations["createMcpServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mcp-servers/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Mcp Server */
+        put: operations["updateMcpServer"];
+        post?: never;
+        /**
+         * Delete Mcp Server
+         * @description Also detaches the server from every agent using it.
+         */
+        delete: operations["deleteMcpServer"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/conversations": {
         parameters: {
             query?: never;
@@ -456,6 +495,8 @@ export interface components {
              * @default false
              */
             sandboxNetwork?: boolean;
+            /** Mcpservers */
+            mcpServers?: string[];
             /** Teams */
             teams?: string[];
             /** Users */
@@ -476,6 +517,16 @@ export interface components {
             key: string;
             /** Value */
             value: string;
+        };
+        /** AgentMcpServerRef */
+        AgentMcpServerRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
         };
         /** AgentRead */
         AgentRead: {
@@ -520,6 +571,8 @@ export interface components {
             tools: components["schemas"]["AgentTools"];
             /** Sandboxnetwork */
             sandboxNetwork: boolean;
+            /** Mcpservers */
+            mcpServers: components["schemas"]["AgentMcpServerRef"][];
             /** Teams */
             teams: components["schemas"]["AgentTeamRef"][];
             /** Users */
@@ -617,6 +670,8 @@ export interface components {
             tools?: components["schemas"]["AgentTools"] | null;
             /** Sandboxnetwork */
             sandboxNetwork?: boolean | null;
+            /** Mcpservers */
+            mcpServers?: string[] | null;
             /** Teams */
             teams?: string[] | null;
             /** Users */
@@ -748,6 +803,60 @@ export interface components {
              */
             tokenType?: "bearer";
             user: components["schemas"]["MeRead"];
+        };
+        /** McpServerCreate */
+        McpServerCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Description */
+            description?: string | null;
+            /** Token */
+            token?: string | null;
+        };
+        /** McpServerRead */
+        McpServerRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+            /** Description */
+            description: string | null;
+            /** Hastoken */
+            hasToken: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /**
+         * McpServerUpdate
+         * @description Partial update. `token: null` removes the token; omit it to keep the current one.
+         */
+        McpServerUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Token */
+            token?: string | null;
         };
         /** MeRead */
         MeRead: {
@@ -1714,6 +1823,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DefaultAgentRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listMcpServers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpServerRead"][];
+                };
+            };
+        };
+    };
+    createMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpServerCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpServerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    updateMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["McpServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpServerRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deleteMcpServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuccessResponse"];
                 };
             };
             /** @description Validation Error */

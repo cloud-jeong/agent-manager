@@ -8,6 +8,7 @@ import { LabelsEditor } from "@/components/agents/labels-editor";
 import { VisibilitySelector } from "@/components/agents/visibility-selector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,6 +21,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { Agent, AgentCreate, Me } from "@/lib/api/client";
+import { useMcpServers } from "@/lib/queries/mcp-servers";
 import { useTeams, useUsers } from "@/lib/queries/teams";
 
 const formSchema = z
@@ -40,6 +42,7 @@ const formSchema = z
       webFetch: z.boolean(),
     }),
     sandboxNetwork: z.boolean(),
+    mcpServers: z.array(z.string()),
     scope: z.enum(["personal", "team", "org"]),
     teams: z.array(z.string()),
     users: z.array(z.object({ userId: z.string(), level: z.enum(["use", "write"]) })),
@@ -81,6 +84,7 @@ export function AgentForm({
   onCancel: () => void;
 }) {
   const teams = useTeams();
+  const mcpServers = useMcpServers();
   const users = useUsers();
   const readOnly = agent !== undefined && !agent.canModify;
 
@@ -103,6 +107,7 @@ export function AgentForm({
         webFetch: agent?.tools.webFetch ?? false,
       },
       sandboxNetwork: agent?.sandboxNetwork ?? false,
+      mcpServers: agent?.mcpServers.map((m) => m.id) ?? [],
       scope: agent?.scope ?? "personal",
       teams: agent?.teams.map((t) => t.id) ?? [],
       users: agent?.users.map((u) => ({ userId: u.id, level: u.level })) ?? [],
@@ -132,6 +137,7 @@ export function AgentForm({
           maxTurns: values.maxTurns,
           tools: values.tools,
           sandboxNetwork: values.sandboxNetwork,
+          mcpServers: values.mcpServers,
           scope: values.scope,
           teams: values.scope === "team" ? values.teams : [],
           users: values.scope === "personal" ? values.users : [],
@@ -293,6 +299,40 @@ export function AgentForm({
                   />
                 ))}
               </div>
+              {(mcpServers.data?.length ?? 0) > 0 && (
+                <div className="space-y-3">
+                  <Label>MCP servers</Label>
+                  <Controller
+                    control={form.control}
+                    name="mcpServers"
+                    render={({ field }) => (
+                      <div className="space-y-2">
+                        {mcpServers.data?.map((server) => (
+                          <label key={server.id} className="flex items-start gap-3 text-sm">
+                            <Checkbox
+                              checked={field.value.includes(server.id)}
+                              disabled={readOnly}
+                              onCheckedChange={(checked) =>
+                                field.onChange(
+                                  checked
+                                    ? [...field.value, server.id]
+                                    : field.value.filter((id) => id !== server.id),
+                                )
+                              }
+                            />
+                            <span>
+                              <span className="font-medium">{server.name}</span>
+                              <span className="block text-muted-foreground">
+                                {server.description ?? server.url}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  />
+                </div>
+              )}
               {usesSandbox && (
                 <Controller
                   control={form.control}

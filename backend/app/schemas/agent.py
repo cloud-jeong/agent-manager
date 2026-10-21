@@ -61,6 +61,7 @@ class AgentCreate(_AgentWritable):
     max_turns: int = Field(default=30, ge=1, le=200)
     tools: AgentTools = Field(default_factory=AgentTools)
     sandbox_network: bool = False
+    mcp_servers: list[uuid.UUID] = Field(default_factory=list)
     teams: list[uuid.UUID] = Field(default_factory=list)
     users: list[AgentUserShareIn] = Field(default_factory=list)
     labels: list[AgentLabelIn] = Field(default_factory=list)
@@ -81,6 +82,7 @@ class AgentUpdate(_AgentWritable):
     max_turns: int | None = Field(default=None, ge=1, le=200)
     tools: AgentTools | None = None
     sandbox_network: bool | None = None
+    mcp_servers: list[uuid.UUID] | None = None
     teams: list[uuid.UUID] | None = None
     users: list[AgentUserShareIn] | None = None
     labels: list[AgentLabelIn] | None = None
@@ -96,6 +98,11 @@ class AgentUserRef(CamelModel):
     name: str
     email: str
     level: AgentShareLevel
+
+
+class AgentMcpServerRef(CamelModel):
+    id: uuid.UUID
+    name: str
 
 
 class AgentLabelRead(CamelModel):
@@ -119,6 +126,7 @@ class AgentRead(CamelModel):
     max_turns: int
     tools: AgentTools
     sandbox_network: bool
+    mcp_servers: list[AgentMcpServerRef]
     teams: list[AgentTeamRef]
     users: list[AgentUserRef]
     labels: list[AgentLabelRead]

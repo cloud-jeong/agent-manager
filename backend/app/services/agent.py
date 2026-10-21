@@ -11,6 +11,7 @@ from app.repositories import agent as agent_repo
 from app.repositories import agent_team as agent_team_repo
 from app.repositories import agent_user as agent_user_repo
 from app.repositories import label as label_repo
+from app.repositories import mcp_server as mcp_server_repo
 from app.repositories import team as team_repo
 from app.repositories import user as user_repo
 from app.repositories.agent import AgentListFilters
@@ -18,6 +19,7 @@ from app.schemas.agent import (
     AgentCreate,
     AgentLabelIn,
     AgentLabelRead,
+    AgentMcpServerRef,
     AgentRead,
     AgentTeamRef,
     AgentTools,
@@ -104,6 +106,9 @@ async def create_agent(db: AsyncSession, actor: Actor, body: AgentCreate) -> Age
     await agent_team_repo.sync(db, agent.id, team_ids)
     await agent_user_repo.sync(db, agent.id, shares)
     await label_repo.sync_agent_labels(db, agent.id, _label_pairs(body.labels))
+    await mcp_server_repo.sync_agent(
+        db, agent.id, await _validate_mcp_servers(db, body.mcp_servers)
+    )
     await db.commit()
     return (await hydrate(db, actor, [agent]))[0]
 
@@ -142,6 +147,9 @@ async def update_agent(
 
     if body.labels is not None:
         await label_repo.sync_agent_labels(db, agent.id, _label_pairs(body.labels))
+    if body.mcp_servers is not None:
+        servers = await _validate_mcp_servers(db, body.mcp_servers)
+        await mcp_server_repo.sync_agent(db, agent.id, servers)
 
     columns = {k: v for k, v in data.items() if k in _COLUMN_FIELDS}
     if body.tools is not None:
@@ -200,6 +208,7 @@ async def hydrate(db: AsyncSession, actor: Actor, agents: list[Agent]) -> list[A
     teams = await agent_team_repo.get_teams_for_agents(db, ids)
     users = await agent_user_repo.get_users_for_agents(db, ids)
     labels = await label_repo.get_labels_for_agents(db, ids)
+    mcp_servers = await mcp_server_repo.get_for_agents(db, ids)
     authors = await user_repo.get_many(db, (a.author_id for a in agents if a.author_id))
 
     result = []
@@ -223,6 +232,7 @@ async def hydrate(db: AsyncSession, actor: Actor, agents: list[Agent]) -> list[A
                 max_turns=a.max_turns,
                 tools=AgentTools.model_validate(a.tools),
                 sandbox_network=a.sandbox_network,
+                mcp_servers=[AgentMcpServerRef(id=m.id, name=m.name) for m in mcp_servers[a.id]],
                 teams=[AgentTeamRef(id=t_id, name=t_name) for t_id, t_name in teams[a.id]],
                 users=[
                     AgentUserRef(id=u_id, name=name, email=email, level=level)
@@ -270,6 +280,7 @@ _NON_NULLABLE_FIELDS = (
     "max_turns",
     "tools",
     "sandbox_network",
+    "mcp_servers",
 )
 
 
@@ -315,6 +326,14 @@ async def _validate_user_shares(
     if missing:
         raise ApiError(400, f"Unknown user(s): {', '.join(sorted(map(str, missing)))}")
     return result
+
+
+async def _validate_mcp_servers(db: AsyncSession, ids: list[uuid.UUID]) -> set[uuid.UUID]:
+    requested = set(ids)
+    missing = requested - await mcp_server_repo.existing_ids(db, requested)
+    if missing:
+        raise ApiError(400, f"Unknown MCP server(s): {', '.join(sorted(map(str, missing)))}")
+    return requested
 
 
 def _label_pairs(labels: list[AgentLabelIn]) -> list[tuple[str, str]]:

@@ -17,6 +17,7 @@ export type ChatMessage = Schemas["MessageRead"];
 export type Run = Schemas["RunRead"];
 export type RunDetail = Schemas["RunDetail"];
 export type RunStatus = Run["status"];
+export type McpServer = Schemas["McpServerRead"];
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 

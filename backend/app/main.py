@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import agents, auth, conversations, members, runs, teams, users
+from app.api import agents, auth, conversations, mcp_servers, members, runs, teams, users
 from app.config import get_settings
 from app.errors import register_error_handlers
 
@@ -26,7 +26,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     register_error_handlers(app)
-    for module in (auth, users, teams, agents, members, conversations, runs):
+    for module in (auth, users, teams, agents, members, mcp_servers, conversations, runs):
         app.include_router(module.router)
 
     @app.get("/health", include_in_schema=False)

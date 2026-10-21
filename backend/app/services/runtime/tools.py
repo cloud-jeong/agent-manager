@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.config import get_settings
-from app.models import Agent
+from app.crypto import decrypt
+from app.models import Agent, McpServer
 from app.services.runtime.sandbox import (
     WORKSPACE,
     Sandbox,
@@ -248,3 +249,37 @@ def truncate(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     half = limit // 2
     omitted = len(text) - 2 * half
     return f"{text[:half]}\n… [{omitted} characters omitted] …\n{text[-half:]}"
+
+
+# =============================================================================
+# MCP connector
+# =============================================================================
+
+MCP_BETA = "mcp-client-2025-11-20"
+
+
+@dataclass
+class McpRequest:
+    servers: list[dict[str, Any]]
+    toolsets: list[dict[str, Any]]
+    betas: list[str]
+
+
+def mcp_request(servers: list[McpServer]) -> McpRequest:
+    """`mcp_servers`, matching `mcp_toolset` tools and the beta flag for the agent's servers.
+
+    Raises DecryptionError if a stored token cannot be decrypted.
+    """
+    if not servers:
+        return McpRequest([], [], [])
+    entries = []
+    for server in servers:
+        entry: dict[str, Any] = {"type": "url", "url": server.url, "name": server.name}
+        if server.token_encrypted:
+            entry["authorization_token"] = decrypt(server.token_encrypted)
+        entries.append(entry)
+    return McpRequest(
+        servers=entries,
+        toolsets=[{"type": "mcp_toolset", "mcp_server_name": s.name} for s in servers],
+        betas=[MCP_BETA],
+    )

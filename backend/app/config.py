@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     )
     jwt_secret: str = "dev-only-secret-change-me-in-production"
     jwt_algorithm: str = "HS256"
+    # Encrypts stored secrets such as MCP server tokens; changing it makes them unreadable
+    secret_key: str = "dev-only-secret-key-change-me-in-production"
     jwt_expire_minutes: int = 720
     cors_origins: str = "http://localhost:3000"
     # Disables connection pooling; used by the test suite

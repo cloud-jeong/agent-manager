@@ -135,3 +135,33 @@ class RunEvent(Base):
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = created_at_col()
+
+
+class McpServer(Base):
+    """A remote MCP server registered by an admin; agents opt in to the ones they use.
+
+    Claude connects to it directly through the API's MCP connector.
+    """
+
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    # Also the `name` sent to the API, so it is limited to [A-Za-z0-9_-].
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    url: Mapped[str] = mapped_column(String(2000), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # Bearer token for the server, encrypted with AGENT_MANAGER_SECRET_KEY (Fernet).
+    token_encrypted: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_col()
+    updated_at: Mapped[datetime] = updated_at_col()
+
+
+class AgentMcpServer(Base):
+    __tablename__ = "agent_mcp_servers"
+
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    mcp_server_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("mcp_servers.id", ondelete="CASCADE"), primary_key=True
+    )

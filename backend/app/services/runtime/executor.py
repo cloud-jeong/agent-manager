@@ -13,14 +13,16 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crypto import DecryptionError
 from app.db import SessionLocal
 from app.models import Agent, Conversation
 from app.repositories import conversation as conversation_repo
+from app.repositories import mcp_server as mcp_server_repo
 from app.repositories import run as run_repo
 from app.repositories import run_event as run_event_repo
 from app.services.runtime.events import EventWriter
 from app.services.runtime.llm import LLM, TurnRequest
-from app.services.runtime.tools import Toolbox
+from app.services.runtime.tools import Toolbox, mcp_request
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +82,16 @@ class RunExecutor:
                 {"role": m.role, "content": m.content}
                 for m in await conversation_repo.list_messages(db, conversation.id)
             ]
+            servers = (await mcp_server_repo.get_for_agents(db, [agent.id]))[agent.id]
 
+        try:
+            mcp = mcp_request(servers)
+        except DecryptionError:
+            return Outcome(
+                "failed", "An MCP server token could not be decrypted; an admin must re-enter it"
+            )
         toolbox = self._toolbox_factory(agent, conversation)
-        tools = toolbox.definitions()
+        tools = toolbox.definitions() + mcp.toolsets
         await self._events.emit("run_started", {"model": agent.model})
 
         for _ in range(agent.max_turns):
@@ -93,6 +102,8 @@ class RunExecutor:
                     system=agent.system_prompt,
                     messages=history,
                     tools=tools,
+                    mcp_servers=mcp.servers,
+                    betas=mcp.betas,
                 ),
                 on_delta=self._events.delta,
                 on_reset=self._reset_turn,

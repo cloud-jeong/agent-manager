@@ -21,6 +21,7 @@ services:
     environment:
       AGENT_MANAGER_DATABASE_URL: postgresql+asyncpg://agent_manager:agent_manager@postgres:5432/agent_manager
       AGENT_MANAGER_JWT_SECRET: ${AGENT_MANAGER_JWT_SECRET:-dev-only-secret-change-me-in-production}
+      AGENT_MANAGER_SECRET_KEY: ${AGENT_MANAGER_SECRET_KEY:-dev-only-secret-key-change-me-in-production}
       AGENT_MANAGER_CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-3000}
     ports:
       - "8000:8000"
@@ -41,6 +42,7 @@ services:
     command: ["python", "-m", "app.worker"]
     environment:
       AGENT_MANAGER_DATABASE_URL: postgresql+asyncpg://agent_manager:agent_manager@postgres:5432/agent_manager
+      AGENT_MANAGER_SECRET_KEY: ${AGENT_MANAGER_SECRET_KEY:-dev-only-secret-key-change-me-in-production}
       AGENT_MANAGER_SANDBOX_RUNTIME: ${AGENT_MANAGER_SANDBOX_RUNTIME:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
